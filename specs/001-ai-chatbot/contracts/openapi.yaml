@@ -1,0 +1,214 @@
+openapi: 3.0.3
+info:
+  title: TaskFlow Chat API
+  version: 1.0.0
+  description: AI chatbot endpoint for natural language task management
+
+servers:
+  - url: http://localhost:8000
+    description: Local development
+
+paths:
+  /api/{user_id}/chat:
+    post:
+      summary: Send a chat message
+      description: |
+        Receives a natural language message, processes it with an AI provider
+        using function-calling tools mapped to task CRUD operations, executes
+        any resulting actions, and returns a human-friendly response.
+      operationId: sendChatMessage
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+      responses:
+        '200':
+          description: Chat response with optional action details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatResponse'
+        '401':
+          description: Unauthorized - invalid or missing JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden - user_id does not match JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: Validation error - message too long or empty
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/{user_id}/chat/history:
+    get:
+      summary: Get chat history
+      description: Returns the user's recent chat messages, ordered by creation time.
+      operationId: getChatHistory
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 50
+            maximum: 100
+          description: Maximum number of messages to return
+      responses:
+        '200':
+          description: List of chat messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ChatMessage'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      summary: Clear chat history
+      description: Deletes all chat messages for the authenticated user.
+      operationId: clearChatHistory
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '204':
+          description: Chat history cleared
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT obtained from Better Auth (EdDSA via JWKS)
+
+  parameters:
+    UserId:
+      name: user_id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: User ID (must match JWT sub claim)
+
+  schemas:
+    ChatRequest:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          maxLength: 2000
+          minLength: 1
+          description: User's natural language message
+
+    ChatResponse:
+      type: object
+      required:
+        - reply
+      properties:
+        reply:
+          type: string
+          description: AI assistant's text response
+        action_taken:
+          type: string
+          nullable: true
+          description: Type of task action performed (created_task, completed_task, deleted_task, updated_task, listed_tasks)
+        task_data:
+          nullable: true
+          description: Affected task details
+          allOf:
+            - $ref: '#/components/schemas/Task'
+
+    ChatMessage:
+      type: object
+      required:
+        - id
+        - user_id
+        - role
+        - content
+        - created_at
+      properties:
+        id:
+          type: integer
+        user_id:
+          type: string
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    Task:
+      type: object
+      properties:
+        id:
+          type: integer
+        user_id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        completed:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Error:
+      type: object
+      required:
+        - detail
+      properties:
+        detail:
+          type: string

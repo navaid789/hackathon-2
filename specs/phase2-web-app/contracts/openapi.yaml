@@ -1,0 +1,335 @@
+openapi: 3.0.3
+info:
+  title: Todo API
+  description: Phase II Full-Stack Todo Web Application - Backend REST API
+  version: 1.0.0
+  contact:
+    name: Todo App
+
+servers:
+  - url: http://localhost:8000
+    description: Local development server
+
+paths:
+  /:
+    get:
+      summary: API Info
+      operationId: root
+      responses:
+        '200':
+          description: API information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name:
+                    type: string
+                    example: Todo API
+                  docs:
+                    type: string
+                    example: /docs
+
+  /health:
+    get:
+      summary: Health Check
+      operationId: health
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /api/{user_id}/tasks:
+    get:
+      summary: List Tasks
+      operationId: listTasks
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: List of tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Task'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      summary: Create Task
+      operationId: createTask
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskCreate'
+      responses:
+        '201':
+          description: Task created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /api/{user_id}/tasks/{task_id}:
+    get:
+      summary: Get Task
+      operationId: getTask
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: Task details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      summary: Update Task
+      operationId: updateTask
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/TaskId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskUpdate'
+      responses:
+        '200':
+          description: Task updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+    delete:
+      summary: Delete Task
+      operationId: deleteTask
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '204':
+          description: Task deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/{user_id}/tasks/{task_id}/complete:
+    patch:
+      summary: Toggle Task Completion
+      operationId: toggleComplete
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: Task completion toggled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: EdDSA JWT token obtained from Better Auth via authClient.token()
+
+  parameters:
+    UserId:
+      name: user_id
+      in: path
+      required: true
+      description: User ID (must match JWT sub claim)
+      schema:
+        type: string
+
+    TaskId:
+      name: task_id
+      in: path
+      required: true
+      description: Task ID
+      schema:
+        type: integer
+
+  schemas:
+    Task:
+      type: object
+      required:
+        - id
+        - user_id
+        - title
+        - description
+        - completed
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: integer
+          description: Auto-increment primary key
+        user_id:
+          type: string
+          description: Owner user ID
+        title:
+          type: string
+          description: Task title
+        description:
+          type: string
+          description: Task description
+          default: ""
+        completed:
+          type: boolean
+          description: Completion status
+          default: false
+        created_at:
+          type: string
+          format: date-time
+          description: Creation timestamp (UTC)
+        updated_at:
+          type: string
+          format: date-time
+          description: Last update timestamp (UTC)
+
+    TaskCreate:
+      type: object
+      required:
+        - title
+      properties:
+        title:
+          type: string
+          description: Task title
+        description:
+          type: string
+          description: Task description
+          default: ""
+
+    TaskUpdate:
+      type: object
+      properties:
+        title:
+          type: string
+          description: New task title
+        description:
+          type: string
+          description: New task description
+        completed:
+          type: boolean
+          description: New completion status
+
+    Error:
+      type: object
+      properties:
+        detail:
+          type: string
+          description: Error message
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid JWT token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            detail: "Invalid token: ..."
+
+    Forbidden:
+      description: User ID mismatch or insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            detail: "Forbidden"
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            detail: "Task not found"
+
+    ValidationError:
+      description: Request validation failed
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              detail:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    loc:
+                      type: array
+                      items:
+                        type: string
+                    msg:
+                      type: string
+                    type:
+                      type: string
