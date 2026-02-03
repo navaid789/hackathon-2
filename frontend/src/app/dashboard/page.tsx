@@ -17,20 +17,31 @@ export default function Dashboard() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editDescription, setEditDescription] = useState("");
+  const [priority, setPriority] = useState("medium");
+  const [dueDate, setDueDate] = useState("");
+  const [editPriority, setEditPriority] = useState("medium");
+  const [editDueDate, setEditDueDate] = useState("");
   const [chatOpen, setChatOpen] = useState(true);
 
+  const userId = session?.user?.id;
+
+  const getToken = useCallback(async (): Promise<string> => {
+    const res = await authClient.token();
+    const jwt = (res as { data?: { token?: string } })?.data?.token;
+    if (!jwt) throw new Error("No token");
+    return jwt;
+  }, []);
+
   const loadTasks = useCallback(async () => {
-    if (!session?.user) return;
+    if (!userId) return;
     try {
-      const res = await authClient.token();
-      const jwt = (res as { data?: { token?: string } })?.data?.token;
-      if (!jwt) return;
-      const data = await api.listTasks(session.user.id, jwt);
+      const jwt = await getToken();
+      const data = await api.listTasks(userId, jwt);
       setTasks(data);
     } catch (err) {
       console.error("Failed to load tasks", err);
     }
-  }, [session?.user]);
+  }, [userId, getToken]);
 
   useEffect(() => {
     if (!isPending && !session) {
@@ -48,20 +59,20 @@ export default function Dashboard() {
 
   if (!session) return null;
 
-  async function getToken(): Promise<string> {
-    const res = await authClient.token();
-    const jwt = (res as { data?: { token?: string } })?.data?.token;
-    if (!jwt) throw new Error("No token");
-    return jwt;
-  }
-
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     if (!title.trim()) return;
     const token = await getToken();
-    await api.createTask(session!.user.id, token, { title, description });
+    await api.createTask(session!.user.id, token, {
+      title,
+      description,
+      priority,
+      due_date: dueDate || null,
+    });
     setTitle("");
     setDescription("");
+    setPriority("medium");
+    setDueDate("");
     loadTasks();
   }
 
@@ -72,8 +83,12 @@ export default function Dashboard() {
   }
 
   async function handleDelete(taskId: number) {
-    const token = await getToken();
-    await api.deleteTask(session!.user.id, token, taskId);
+    try {
+      const token = await getToken();
+      await api.deleteTask(session!.user.id, token, taskId);
+    } catch {
+      // Task may already be deleted
+    }
     loadTasks();
   }
 
@@ -81,6 +96,8 @@ export default function Dashboard() {
     setEditingId(task.id);
     setEditTitle(task.title);
     setEditDescription(task.description);
+    setEditPriority(task.priority || "medium");
+    setEditDueDate(task.due_date ? task.due_date.split("T")[0] : "");
   }
 
   async function handleEdit(e: React.FormEvent) {
@@ -90,6 +107,8 @@ export default function Dashboard() {
     await api.updateTask(session!.user.id, token, editingId, {
       title: editTitle,
       description: editDescription,
+      priority: editPriority,
+      due_date: editDueDate || null,
     });
     setEditingId(null);
     loadTasks();
@@ -143,6 +162,25 @@ export default function Dashboard() {
               onChange={(e) => setDescription(e.target.value)}
               className="w-full px-4 py-2.5 border border-gray-200 rounded-lg mb-3 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
             />
+            <div className="flex gap-3 mb-3">
+              <select
+                value={priority}
+                onChange={(e) => setPriority(e.target.value)}
+                className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+              >
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+                <option value="urgent">Urgent</option>
+              </select>
+              <input
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                placeholder="Due date"
+              />
+            </div>
             <button
               type="submit"
               className="px-5 py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors"
@@ -177,7 +215,26 @@ export default function Dashboard() {
                       value={editDescription}
                       onChange={(e) => setEditDescription(e.target.value)}
                       className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      placeholder="Description"
                     />
+                    <div className="flex gap-2">
+                      <select
+                        value={editPriority}
+                        onChange={(e) => setEditPriority(e.target.value)}
+                        className="px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                      >
+                        <option value="low">Low</option>
+                        <option value="medium">Medium</option>
+                        <option value="high">High</option>
+                        <option value="urgent">Urgent</option>
+                      </select>
+                      <input
+                        type="date"
+                        value={editDueDate}
+                        onChange={(e) => setEditDueDate(e.target.value)}
+                        className="px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
                     <div className="flex gap-2">
                       <button type="submit" className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors">
                         Save
@@ -200,14 +257,46 @@ export default function Dashboard() {
                       className="w-5 h-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                     />
                     <div className="flex-1 min-w-0">
-                      <p className={`font-medium text-sm ${task.completed ? "line-through text-gray-400" : "text-gray-900"}`}>
-                        {task.title}
-                      </p>
-                      {task.description && (
-                        <p className="text-xs text-gray-400 mt-0.5 truncate">{task.description}</p>
-                      )}
+                      <div className="flex items-center gap-2">
+                        <p className={`font-medium text-sm ${task.completed ? "line-through text-gray-400" : "text-gray-900"}`}>
+                          {task.title}
+                        </p>
+                        {task.priority && task.priority !== "medium" && (
+                          <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide ${
+                            task.priority === "urgent" ? "bg-red-100 text-red-800" :
+                            task.priority === "high" ? "bg-orange-100 text-orange-800" :
+                            "bg-gray-100 text-gray-600"
+                          }`}>
+                            {task.priority}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        {task.description && (
+                          <p className="text-xs text-gray-400 truncate">{task.description}</p>
+                        )}
+                        {task.due_date && (
+                          <span className={`text-[10px] font-medium whitespace-nowrap ${
+                            !task.completed && new Date(task.due_date) < new Date() ? "text-red-600" :
+                            !task.completed && new Date(task.due_date).toDateString() === new Date().toDateString() ? "text-amber-600" :
+                            "text-gray-400"
+                          }`}>
+                            Due {new Date(task.due_date).toLocaleDateString()}
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <div className="flex gap-2 shrink-0">
+                      <button
+                        onClick={() => handleToggle(task.id)}
+                        className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                          task.completed
+                            ? "text-amber-700 bg-amber-50 hover:bg-amber-100"
+                            : "text-green-700 bg-green-50 hover:bg-green-100"
+                        }`}
+                      >
+                        {task.completed ? "Undo" : "Complete"}
+                      </button>
                       <button
                         onClick={() => startEdit(task)}
                         className="px-3 py-1.5 text-xs font-medium text-indigo-700 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors"

@@ -1,5 +1,5 @@
 import type { Task } from "@/types/task";
-import type { ChatMessage, ChatResponse } from "@/types/chat";
+import type { ChatMessage, ChatResponse, ChatSession } from "@/types/chat";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -12,10 +12,10 @@ async function fetchWithAuth(url: string, token: string, options: RequestInit = 
       ...options.headers,
     },
   });
+  if (res.status === 204) return null;
   if (!res.ok) {
     throw new Error(`API error: ${res.status}`);
   }
-  if (res.status === 204) return null;
   return res.json();
 }
 
@@ -23,13 +23,13 @@ export const api = {
   listTasks: (userId: string, token: string): Promise<Task[]> =>
     fetchWithAuth(`${API_URL}/api/${userId}/tasks`, token),
 
-  createTask: (userId: string, token: string, data: { title: string; description?: string }): Promise<Task> =>
+  createTask: (userId: string, token: string, data: { title: string; description?: string; priority?: string; due_date?: string | null }): Promise<Task> =>
     fetchWithAuth(`${API_URL}/api/${userId}/tasks`, token, {
       method: "POST",
       body: JSON.stringify(data),
     }),
 
-  updateTask: (userId: string, token: string, taskId: number, data: { title?: string; description?: string }): Promise<Task> =>
+  updateTask: (userId: string, token: string, taskId: number, data: { title?: string; description?: string; priority?: string; due_date?: string | null }): Promise<Task> =>
     fetchWithAuth(`${API_URL}/api/${userId}/tasks/${taskId}`, token, {
       method: "PUT",
       body: JSON.stringify(data),
@@ -45,10 +45,23 @@ export const api = {
       method: "PATCH",
     }),
 
-  sendMessage: (userId: string, token: string, message: string): Promise<ChatResponse> =>
+  // Chat sessions
+  listChatSessions: (userId: string, token: string): Promise<ChatSession[]> =>
+    fetchWithAuth(`${API_URL}/api/${userId}/chat/sessions`, token),
+
+  deleteChatSession: (userId: string, token: string, sessionId: number): Promise<null> =>
+    fetchWithAuth(`${API_URL}/api/${userId}/chat/sessions/${sessionId}`, token, {
+      method: "DELETE",
+    }),
+
+  getSessionMessages: (userId: string, token: string, sessionId: number): Promise<ChatMessage[]> =>
+    fetchWithAuth(`${API_URL}/api/${userId}/chat/sessions/${sessionId}/messages`, token),
+
+  // Chat messaging
+  sendMessage: (userId: string, token: string, message: string, sessionId?: number | null): Promise<ChatResponse> =>
     fetchWithAuth(`${API_URL}/api/${userId}/chat`, token, {
       method: "POST",
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({ message, session_id: sessionId ?? null }),
     }),
 
   getChatHistory: (userId: string, token: string, limit: number = 50): Promise<ChatMessage[]> =>

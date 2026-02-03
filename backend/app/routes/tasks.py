@@ -36,7 +36,13 @@ def create_task(
     token: dict = Depends(verify_token),
 ):
     _require_owner(token, user_id)
-    task = Task(user_id=user_id, title=body.title, description=body.description)
+    task = Task(
+        user_id=user_id,
+        title=body.title,
+        description=body.description,
+        priority=body.priority,
+        due_date=body.due_date,
+    )
     session.add(task)
     session.commit()
     session.refresh(task)

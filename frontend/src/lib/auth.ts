@@ -8,7 +8,13 @@ const pool = new Pool({
 
 export const auth = betterAuth({
   database: pool,
-  plugins: [jwt()],
+  plugins: [jwt({
+    jwks: {
+      keyPairConfig: {
+        alg: "RS256",
+      },
+    },
+  })],
   emailAndPassword: {
     enabled: true,
   },

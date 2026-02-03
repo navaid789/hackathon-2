@@ -37,7 +37,7 @@ class GroqProvider:
         if not api_key:
             raise ValueError("GROQ_API_KEY not set")
         self.client = Groq(api_key=api_key)
-        self.model = "llama-3.3-70b-versatile"
+        self.model = "qwen/qwen3-32b"
 
     def chat(self, messages: list[dict], tools: list[dict]) -> Any:
         kwargs: dict[str, Any] = {
@@ -47,6 +47,7 @@ class GroqProvider:
         if tools:
             kwargs["tools"] = tools
             kwargs["tool_choice"] = "auto"
+            kwargs["parallel_tool_calls"] = False
         return self.client.chat.completions.create(**kwargs)
 
 
