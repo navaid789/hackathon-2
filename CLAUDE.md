@@ -208,3 +208,12 @@ Wait for consent; never auto-create ADRs. Group related decisions (stacks, authe
 
 ## Code Standards
 See `.specify/memory/constitution.md` for code quality, testing, performance, security, and architecture principles.
+
+## Active Technologies
+- Python 3.12 (backend), Node.js 20 (frontend), YAML (manifests) + Docker, Docker Compose V2, Kubernetes 1.28+, Minikube, NGINX Ingress Controller (002-k8s-deployment)
+- External Neon PostgreSQL (no changes) (002-k8s-deployment)
+- Python 3.12 (backend + worker), Node.js 20 (frontend), YAML (manifests) + Apache Kafka 3.9.0 (KRaft), Dapr 1.14.x, Zipkin, Docker, Docker Compose V2, Kubernetes 1.28+, Minikube (003-kafka-dapr-cloud)
+- External Neon PostgreSQL (shared by backend and worker — new tables for notifications + analytics) (003-kafka-dapr-cloud)
+
+## Recent Changes
+- 002-k8s-deployment: Added Python 3.12 (backend), Node.js 20 (frontend), YAML (manifests) + Docker, Docker Compose V2, Kubernetes 1.28+, Minikube, NGINX Ingress Controller

@@ -1,0 +1,178 @@
+services:
+  # =============================================================================
+  # Infrastructure Services
+  # =============================================================================
+
+  kafka:
+    image: apache/kafka:3.9.0
+    hostname: kafka
+    container_name: kafka
+    ports:
+      - "9092:9092"
+      - "9093:9093"
+    environment:
+      # KRaft mode (no Zookeeper)
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  zipkin:
+    image: openzipkin/zipkin:3
+    container_name: zipkin
+    ports:
+      - "9411:9411"
+
+  # =============================================================================
+  # Dapr Placement Service (required for actors, optional but good practice)
+  # =============================================================================
+
+  placement:
+    image: daprio/dapr:1.14.4
+    container_name: placement
+    command: ["./placement", "-port", "50006"]
+    ports:
+      - "50006:50006"
+
+  # =============================================================================
+  # Application Services
+  # =============================================================================
+
+  backend:
+    build: ./backend
+    image: taskflow-backend:${TAG:-latest}
+    container_name: backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./backend/.env
+    environment:
+      - JWKS_URL=http://frontend:3000/api/auth/jwks
+      - DAPR_HTTP_PORT=3500
+      - DAPR_PUBSUB_NAME=taskflow-pubsub
+      - DAPR_TOPIC=task-events
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - default
+
+  backend-dapr:
+    image: daprio/daprd:1.14.4
+    container_name: backend-dapr
+    command:
+      - "./daprd"
+      - "-app-id"
+      - "backend"
+      - "-app-port"
+      - "8000"
+      - "-dapr-http-port"
+      - "3500"
+      - "-dapr-grpc-port"
+      - "50001"
+      - "-resources-path"
+      - "/components"
+      - "-config"
+      - "/config/tracing.yaml"
+      - "-placement-host-address"
+      - "placement:50006"
+      - "-log-level"
+      - "info"
+    volumes:
+      - ./dapr/components:/components:ro
+      - ./dapr/config:/config:ro
+    network_mode: "service:backend"
+    depends_on:
+      - backend
+      - placement
+      - kafka
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+    image: taskflow-frontend:${TAG:-latest}
+    container_name: frontend
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./frontend/.env.local
+    depends_on:
+      - backend
+
+  # =============================================================================
+  # Worker Service (Event Consumer)
+  # =============================================================================
+
+  worker:
+    build: ./worker
+    image: taskflow-worker:${TAG:-latest}
+    container_name: worker
+    ports:
+      - "8001:8001"
+    env_file:
+      - ./backend/.env
+    environment:
+      - DAPR_HTTP_PORT=3500
+      - DAPR_PUBSUB_NAME=taskflow-pubsub
+      - DAPR_TOPIC=task-events
+      - BACKEND_URL=http://backend:8000
+      - OVERDUE_CHECK_INTERVAL=300
+      - DAILY_SUMMARY_HOUR=8
+    depends_on:
+      kafka:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    networks:
+      - default
+
+  worker-dapr:
+    image: daprio/daprd:1.14.4
+    container_name: worker-dapr
+    command:
+      - "./daprd"
+      - "-app-id"
+      - "worker"
+      - "-app-port"
+      - "8001"
+      - "-dapr-http-port"
+      - "3500"
+      - "-dapr-grpc-port"
+      - "50002"
+      - "-resources-path"
+      - "/components"
+      - "-config"
+      - "/config/tracing.yaml"
+      - "-placement-host-address"
+      - "placement:50006"
+      - "-log-level"
+      - "info"
+    volumes:
+      - ./dapr/components:/components:ro
+      - ./dapr/config:/config:ro
+    network_mode: "service:worker"
+    depends_on:
+      - worker
+      - placement
+      - kafka
+
+networks:
+  default:
+    driver: bridge
