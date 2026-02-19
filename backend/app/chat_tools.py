@@ -2,6 +2,7 @@ import json
 from datetime import datetime, timezone, timedelta
 from sqlmodel import Session, select
 from app.models import Task
+from app.events import publish_event
 
 TOOLS = [
     {
@@ -202,6 +203,23 @@ def execute_tool(
         session.add(task)
         session.commit()
         session.refresh(task)
+
+        # Publish task.created event
+        publish_event(
+            event_type="task.created",
+            data={
+                "task_id": task.id,
+                "user_id": task.user_id,
+                "title": task.title,
+                "description": task.description,
+                "priority": task.priority,
+                "due_date": task.due_date.isoformat() if task.due_date else None,
+                "created_at": task.created_at.isoformat(),
+            },
+            user_id=user_id,
+            task_id=task.id,
+        )
+
         return (
             json.dumps({"success": True, "task_id": task.id, "title": task.title, "priority": task.priority, "due_date": task.due_date.isoformat() if task.due_date else None}),
             "created_task",
@@ -233,11 +251,33 @@ def execute_tool(
         task = session.get(Task, arguments["task_id"])
         if not task or task.user_id != user_id:
             return json.dumps({"error": "Task not found"}), None, None
+        was_completed = task.completed
         task.completed = not task.completed
         task.updated_at = datetime.now(timezone.utc)
         session.add(task)
         session.commit()
         session.refresh(task)
+
+        # Publish task.completed event when marking as completed
+        if task.completed and not was_completed:
+            time_to_complete = None
+            if task.created_at:
+                delta = task.updated_at - task.created_at
+                time_to_complete = delta.total_seconds() / 3600.0
+
+            publish_event(
+                event_type="task.completed",
+                data={
+                    "task_id": task.id,
+                    "user_id": task.user_id,
+                    "completed": True,
+                    "completed_at": task.updated_at.isoformat(),
+                    "time_to_complete_hours": time_to_complete,
+                },
+                user_id=user_id,
+                task_id=task.id,
+            )
+
         return (
             json.dumps({"success": True, "task_id": task.id, "completed": task.completed}),
             "completed_task",
@@ -249,8 +289,24 @@ def execute_tool(
         if not task or task.user_id != user_id:
             return json.dumps({"error": "Task not found"}), None, None
         task_data = _task_to_dict(task)
+        task_title = task.title
+        deleted_task_id = task.id
         session.delete(task)
         session.commit()
+
+        # Publish task.deleted event
+        publish_event(
+            event_type="task.deleted",
+            data={
+                "task_id": deleted_task_id,
+                "user_id": user_id,
+                "title": task_title,
+                "deleted_at": datetime.now(timezone.utc).isoformat(),
+            },
+            user_id=user_id,
+            task_id=deleted_task_id,
+        )
+
         return (
             json.dumps({"success": True, "deleted_task_id": arguments["task_id"]}),
             "deleted_task",
@@ -261,18 +317,44 @@ def execute_tool(
         task = session.get(Task, arguments["task_id"])
         if not task or task.user_id != user_id:
             return json.dumps({"error": "Task not found"}), None, None
-        if arguments.get("title") is not None:
-            task.title = arguments["title"]
-        if arguments.get("description") is not None:
-            task.description = arguments["description"]
-        if arguments.get("priority") is not None:
-            task.priority = arguments["priority"]
-        if "due_date" in arguments:
-            task.due_date = _parse_due_date(arguments["due_date"])
+
+        # Track changes for event
+        changes = {}
+        update_fields = ["title", "description", "priority", "due_date"]
+        for field in update_fields:
+            if field == "due_date" and field in arguments:
+                old_value = task.due_date.isoformat() if task.due_date else None
+                new_value = _parse_due_date(arguments["due_date"])
+                new_value_str = new_value.isoformat() if new_value else None
+                if old_value != new_value_str:
+                    changes[field] = {"old": old_value, "new": new_value_str}
+                task.due_date = new_value
+            elif arguments.get(field) is not None:
+                old_value = getattr(task, field)
+                new_value = arguments[field]
+                if old_value != new_value:
+                    changes[field] = {"old": old_value, "new": new_value}
+                setattr(task, field, new_value)
+
         task.updated_at = datetime.now(timezone.utc)
         session.add(task)
         session.commit()
         session.refresh(task)
+
+        # Publish task.updated event if there were changes
+        if changes:
+            publish_event(
+                event_type="task.updated",
+                data={
+                    "task_id": task.id,
+                    "user_id": task.user_id,
+                    "changes": changes,
+                    "updated_at": task.updated_at.isoformat(),
+                },
+                user_id=user_id,
+                task_id=task.id,
+            )
+
         return (
             json.dumps({"success": True, "task_id": task.id, "title": task.title, "priority": task.priority, "due_date": task.due_date.isoformat() if task.due_date else None}),
             "updated_task",

@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: taskflow-backend
+  namespace: taskflow
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: taskflow-backend
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: taskflow-backend
+      annotations:
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "backend"
+        dapr.io/app-port: "8000"
+        dapr.io/config: "taskflow-tracing"
+        dapr.io/log-level: "info"
+    spec:
+      containers:
+        - name: backend
+          # For local Minikube: taskflow-backend:latest
+          # For registry: ghcr.io/<owner>/taskflow-backend:<tag>
+          # Rolling update: kubectl set image deployment/taskflow-backend backend=ghcr.io/<owner>/taskflow-backend:<new-tag> -n taskflow
+          image: taskflow-backend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          envFrom:
+            - secretRef:
+                name: taskflow-secrets
+            - configMapRef:
+                name: taskflow-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: taskflow-backend
+  namespace: taskflow
+spec:
+  type: ClusterIP
+  selector:
+    app: taskflow-backend
+  ports:
+    - port: 8000
+      targetPort: 8000

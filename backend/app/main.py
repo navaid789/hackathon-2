@@ -1,3 +1,4 @@
+import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,9 +17,17 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Todo API", lifespan=lifespan)
 
+cors_origins = [
+    "http://localhost:3000",
+    "http://taskflow.local",
+]
+extra_origin = os.environ.get("CORS_ORIGIN", "")
+if extra_origin:
+    cors_origins.append(extra_origin)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
